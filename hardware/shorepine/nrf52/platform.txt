@@ -1,2 +1,6 @@
 ## Override broken recipe
 recipe.objcopy.uf2.pattern=
+
+## Override complier optimization
+#compiler.optimization_flag=-Ofast
+#compiler.optimization_flag=-O3
