@@ -77,7 +77,7 @@ supermini.pid.3=0x5284
 
 # Upload
 supermini.bootloader.tool=bootburn
-supermini.upload.tool=nRFMicro-like Boards:nrfutil
+supermini.upload.tool=Seeeduino:nrfutil
 supermini.upload.protocol=nrfutil
 supermini.upload.use_1200bps_touch=true
 supermini.upload.wait_for_upload_port=true
@@ -88,8 +88,8 @@ supermini.upload.maximum_data_size=237568
 supermini.build.mcu=cortex-m4
 supermini.build.f_cpu=64000000
 supermini.build.board=SuperMini_nRF52840
-supermini.build.core=nRFMicro-like Boards:nRF5
-supermini.build.variant=nRFMicro-like Boards:SuperMini_nRF52840
+supermini.build.core=Seeeduino:nRF5
+supermini.build.variant=SuperMini_nRF52840
 supermini.build.usb_manufacturer="Generic"
 supermini.build.usb_product="SuperMini nRF52840"
 supermini.build.extra_flags=-DNRF52840_XXAA "-I{build.source.path}/global_include" "-include{build.source.path}/global_include/global_macros.h" {build.flags.usb}
