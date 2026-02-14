@@ -1,0 +1,2 @@
+## Override broken recipe
+recipe.objcopy.uf2.pattern=
