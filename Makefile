@@ -15,7 +15,7 @@ ARDUINO_CONFIG_FILE ?= $(ROOT_DIR)/arduino-cli.yaml
 export ARDUINO_CONFIG_FILE
 CORES := Seeeduino:nrf52@1.1.10
 BOARD ?= shorepine:nrf52:xiaonRF52840Plus
-SKETCHES := $(foreach file,$(wildcard */*.ino),$(basename $(notdir $(file))))
+SKETCHES := $(wildcard *.ino)
 PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*) /dev/cu.usbmodemNotFound)
 
 
@@ -27,12 +27,11 @@ define SKETCH_template
 .PHONY: $(1)
 $(1): toolchain
 	@echo Building sketch: $$@
-	@touch $$@/git_info.h
 	$(ARDUINO_CLI) compile --fqbn $(BOARD) --export-binaries $$@
-GENERATED_FILES += $(1)/git_info.h $(1)/build
+GENERATED_FILES += build
 endef
 
-$(foreach sketch,$(SKETCHES),$(eval $(call SKETCH_template,$(basename $(notdir $(sketch))))))
+$(foreach sketch,$(SKETCHES),$(eval $(call SKETCH_template,$(sketch))))
 
 
 #
@@ -72,7 +71,7 @@ all: arduino-cli config-file cores libs sketches  ## make arduino-cli config-fil
 
 flash: sketches  ## Upload build to device for nrf52_blink_info
 	@echo Flash using port: $(PORT)
-	@$(ARDUINO_CLI) upload --fqbn $(BOARD) --port $(PORT) nrf52_blink_info
+	@$(ARDUINO_CLI) upload --fqbn $(BOARD) --port $(PORT)
 
 monitor:  ## Connect to serial console on device
 	@echo Monitor using port: $(PORT)
