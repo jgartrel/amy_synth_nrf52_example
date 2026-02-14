@@ -62,6 +62,8 @@ cores: toolchain  ## Install the required platform cores
 
 libs: toolchain  ## Install required libraries
 	@$(ARDUINO_CLI) config set library.enable_unsafe_install true
+	@echo Installing AMY_Synthesizer using --git-url
+	@$(ARDUINO_CLI) lib install --git-url https://github.com/jgartrel/amy_synth.git#a209c428b146684c29a5afaa4c321b00ee324409
 	@$(ARDUINO_CLI) config set library.enable_unsafe_install false
 	@$(ARDUINO_CLI) lib install "Time"@1.6.1
 

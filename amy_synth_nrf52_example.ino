@@ -1,105 +1,324 @@
 #include <Arduino.h>
 #include <Adafruit_TinyUSB.h> // for Serial
 #include <bluefruit.h>
+#include <nrf_i2s.h>
+#include <nrfx_i2s.h>
+#include <AMY-Arduino.h>
 
-float voltageLevel(uint16_t level) {
-  float voltage = level * 3.6 / 4096.0;
-  return voltage;
+#define PIN_I2S_BCLK PIN_I2S_SCK
+#define PIN_I2S_LRCLK PIN_I2S_WS
+#define PIN_I2S_SDOUT PIN_I2S_SD
+#define PIN_PWR_SPK D0
+
+#define NRF_I2S_AUDIO_PRIORITY      6         ///< requested priority of the I2S peripheral
+
+/* ---------------- Audio config ---------------- */
+#define AUDIO_BLOCK_FRAMES AMY_BLOCK_SIZE
+#define AUDIO_CHANNELS     2
+#define AUDIO_SAMPLES      (AUDIO_BLOCK_FRAMES * AUDIO_CHANNELS)
+
+/* ---------------- Audio buffers ---------------- */
+static int16_t i2s_buffer_0[AUDIO_SAMPLES];
+static int16_t i2s_buffer_1[AUDIO_SAMPLES];
+
+/* ---------------- Buffer / underrun state ---------------- */
+static volatile bool buffer_0_active;
+static volatile bool render_buf0;
+static volatile bool render_buf1;
+
+static volatile bool buf0_ready;
+static volatile bool buf1_ready;
+
+static volatile uint32_t iteration_count;
+static volatile uint32_t underrun_count;
+static volatile uint32_t i2s_write_count;
+static volatile uint32_t i2s_write_bytes;
+static volatile uint32_t amy_task_count;
+static volatile uint32_t zero_buffer_count;
+
+extern unsigned char __HeapBase[];
+extern unsigned char __HeapLimit[];
+
+/* ---------------- Playback state ---------------- */
+static bool playback_active;
+static uint32_t playback_start_ms;
+
+bool g_force_wdfail = false;
+uint32_t update_duration_ema = 0;
+uint32_t update_duration_max = 0;
+
+/* ---------------- I2S handler (NRFX style) ---------------- */
+static void i2s_event_handler(nrfx_i2s_buffers_t const *p_released, uint32_t status)
+{
+  if (!(status & NRFX_I2S_STATUS_NEXT_BUFFERS_NEEDED))
+    return;
+
+  nrfx_i2s_buffers_t next;
+
+  if (buffer_0_active) {
+    if (!buf1_ready) underrun_count++;
+    next.p_tx_buffer = (const uint32_t*)i2s_buffer_1;
+    render_buf1 = true;
+    buf1_ready = false;
+  } else {
+    if (!buf0_ready) underrun_count++;
+    next.p_tx_buffer = (const uint32_t*)i2s_buffer_0;
+    render_buf0 = true;
+    buf0_ready = false;
+  }
+
+  next.p_rx_buffer = nullptr;
+  buffer_0_active = !buffer_0_active;
+  nrfx_i2s_next_buffers_set(&next);
 }
 
-uint32_t analogRead_internal2( uint32_t psel)
+/* ---------------- I2S helpers ---------------- */
+static void i2s_init() {
+
+  nrfx_i2s_config_t config =
+  {
+    .sck_pin      = PIN_I2S_BCLK,
+    .lrck_pin     = PIN_I2S_LRCLK,
+    .mck_pin      = NRFX_I2S_PIN_NOT_USED,
+    .sdout_pin    = PIN_I2S_SDOUT,
+    .sdin_pin     = NRFX_I2S_PIN_NOT_USED,
+    .irq_priority = NRF_I2S_AUDIO_PRIORITY,
+    .mode         = NRF_I2S_MODE_MASTER,
+    .format       = NRF_I2S_FORMAT_I2S,
+    .alignment    = NRF_I2S_ALIGN_LEFT,
+    .sample_width = NRF_I2S_SWIDTH_16BIT,
+    .channels     = NRF_I2S_CHANNELS_STEREO,
+    .mck_setup    = NRF_I2S_MCK_32MDIV32,   // 31.250KHz ~(32MDIV32 = 1.000MHz / 32)
+    .ratio        = NRF_I2S_RATIO_32X
+  };
+
+  nrfx_i2s_init(&config, i2s_event_handler);
+}
+
+static void i2s_start() {
+  // Prime buffers with amy_simple_fill_buffer + memcpy
+  int16_t *buf0 = amy_simple_fill_buffer();
+  memcpy(i2s_buffer_0, buf0, AUDIO_SAMPLES * sizeof(int16_t));
+
+  int16_t *buf1 = amy_simple_fill_buffer();
+  memcpy(i2s_buffer_1, buf1, AUDIO_SAMPLES * sizeof(int16_t));
+
+  buf0_ready = true;
+  buf1_ready = true;
+  buffer_0_active = true;
+
+  nrfx_i2s_buffers_t initial;
+  initial.p_tx_buffer = (const uint32_t*)i2s_buffer_0;
+  initial.p_rx_buffer = nullptr;
+
+  // Power on the SPK
+  pinMode(PIN_PWR_SPK, INPUT_PULLUP);
+  //delay(13);
+
+  nrfx_i2s_start(&initial, AUDIO_BLOCK_FRAMES, 0);
+}
+
+static void i2s_stop() {
+  nrfx_i2s_stop();
+  // Power off the SPK
+  pinMode(PIN_PWR_SPK, INPUT_PULLDOWN);
+  delay(13);
+  nrfx_i2s_uninit();
+}
+
+void stop_midi() {
+}
+
+void run_midi() {
+}
+
+void amy_platform_init() {
+  i2s_init();
+  i2s_start();
+}
+
+void amy_platform_deinit() {
+  i2s_stop();
+}
+
+void amy_update_tasks() {
+  amy_execute_deltas();
+}
+
+int16_t *amy_render_audio() {
+    amy_render(0, AMY_OSCS, 0);
+    int16_t *block = amy_fill_buffer();
+    return block;
+}
+
+size_t amy_i2s_write(const uint8_t *buffer, size_t nbytes) {
+  i2s_write_count++;
+
+  // Ensure we always copy a safe number of bytes
+  if (nbytes > sizeof(i2s_buffer_0)) {
+    Serial.print("amy_i2s_write bytes exceeded: "); Serial.println(nbytes);
+    nbytes = sizeof(i2s_buffer_0);
+  }
+
+  if (nbytes < sizeof(i2s_buffer_0)) {
+    Serial.print("amy_i2s_write bytes truncated: "); Serial.println(nbytes);
+  }
+
+  // Check the buffer for any non-zero values
+  bool zero_flag = true;
+  for(size_t i=0;i<nbytes;i++) {
+    if ( buffer[i] != 0 ) {
+      zero_flag = false;
+    }
+  }
+  if (zero_flag) zero_buffer_count++;
+
+  if (render_buf0) {
+    render_buf0 = false;
+    memcpy(i2s_buffer_0, buffer, nbytes);
+    buf0_ready = true;
+    i2s_write_bytes += nbytes;
+    return nbytes;
+  }
+
+  if (render_buf1) {
+    render_buf1 = false;
+    memcpy(i2s_buffer_1, buffer, nbytes);
+    buf1_ready = true;
+    i2s_write_bytes += nbytes;
+    return nbytes;
+  }
+
+  Serial.print("amy_i2s_write bytes ignored: "); Serial.println(nbytes);
+  return 0;
+}
+
+void display_info()
 {
-  volatile int16_t value = 0;
-
-  NRF_SAADC->RESOLUTION = SAADC_RESOLUTION_VAL_12bit;
-
-  for (int i = 0; i < 8; i++) {
-    NRF_SAADC->CH[i].PSELN = SAADC_CH_PSELP_PSELP_NC;
-    NRF_SAADC->CH[i].PSELP = SAADC_CH_PSELP_PSELP_NC;
-  }
-  NRF_SAADC->CH[0].CONFIG = ((SAADC_CH_CONFIG_RESP_Bypass        << SAADC_CH_CONFIG_RESP_Pos)   & SAADC_CH_CONFIG_RESP_Msk)
-                            | ((SAADC_CH_CONFIG_RESP_Bypass      << SAADC_CH_CONFIG_RESN_Pos)   & SAADC_CH_CONFIG_RESN_Msk)
-                            | ((SAADC_CH_CONFIG_GAIN_Gain1_6     << SAADC_CH_CONFIG_GAIN_Pos)   & SAADC_CH_CONFIG_GAIN_Msk)
-                            | ((SAADC_CH_CONFIG_REFSEL_Internal  << SAADC_CH_CONFIG_REFSEL_Pos) & SAADC_CH_CONFIG_REFSEL_Msk)
-                            | ((SAADC_CH_CONFIG_TACQ_3us         << SAADC_CH_CONFIG_TACQ_Pos)   & SAADC_CH_CONFIG_TACQ_Msk)
-                            | ((SAADC_CH_CONFIG_MODE_SE          << SAADC_CH_CONFIG_MODE_Pos)   & SAADC_CH_CONFIG_MODE_Msk)
-                            | ((SAADC_CH_CONFIG_BURST_Disabled   << SAADC_CH_CONFIG_BURST_Pos)  & SAADC_CH_CONFIG_BURST_Msk);
-  NRF_SAADC->CH[0].PSELN = psel;
-  NRF_SAADC->CH[0].PSELP = psel;
-
-  NRF_SAADC->RESULT.PTR = (uint32_t)&value;
-  NRF_SAADC->RESULT.MAXCNT = 1; // One sample
-
-  NRF_SAADC->ENABLE = (SAADC_ENABLE_ENABLE_Enabled << SAADC_ENABLE_ENABLE_Pos);
-
-  NRF_SAADC->TASKS_START = 0x01UL;
-
-  while (!NRF_SAADC->EVENTS_STARTED);
-  NRF_SAADC->EVENTS_STARTED = 0x00UL;
-
-  NRF_SAADC->TASKS_SAMPLE = 0x01UL;
-
-  while (!NRF_SAADC->EVENTS_END);
-  NRF_SAADC->EVENTS_END = 0x00UL;
-
-  NRF_SAADC->TASKS_STOP = 0x01UL;
-
-  while (!NRF_SAADC->EVENTS_STOPPED);
-  NRF_SAADC->EVENTS_STOPPED = 0x00UL;
-
-  NRF_SAADC->ENABLE = (SAADC_ENABLE_ENABLE_Disabled << SAADC_ENABLE_ENABLE_Pos);
-
-  // Disable channel and ensure config is set to disable ladder resistors
-  NRF_SAADC->CH[0].PSELN = SAADC_CH_PSELP_PSELP_NC;
-  NRF_SAADC->CH[0].PSELP = SAADC_CH_PSELP_PSELP_NC;
-  NRF_SAADC->CH[0].CONFIG = ((SAADC_CH_CONFIG_RESP_Bypass        << SAADC_CH_CONFIG_RESP_Pos)   & SAADC_CH_CONFIG_RESP_Msk)
-                            | ((SAADC_CH_CONFIG_RESP_Bypass      << SAADC_CH_CONFIG_RESN_Pos)   & SAADC_CH_CONFIG_RESN_Msk)
-                            | ((SAADC_CH_CONFIG_GAIN_Gain1_6     << SAADC_CH_CONFIG_GAIN_Pos)   & SAADC_CH_CONFIG_GAIN_Msk)
-                            | ((SAADC_CH_CONFIG_REFSEL_Internal  << SAADC_CH_CONFIG_REFSEL_Pos) & SAADC_CH_CONFIG_REFSEL_Msk)
-                            | ((SAADC_CH_CONFIG_TACQ_10us        << SAADC_CH_CONFIG_TACQ_Pos)   & SAADC_CH_CONFIG_TACQ_Msk)
-                            | ((SAADC_CH_CONFIG_MODE_SE          << SAADC_CH_CONFIG_MODE_Pos)   & SAADC_CH_CONFIG_MODE_Msk)
-                            | ((SAADC_CH_CONFIG_BURST_Disabled   << SAADC_CH_CONFIG_BURST_Pos)  & SAADC_CH_CONFIG_BURST_Msk);
-
-  if (value < 0) {
-    value = 0;
-  }
-
-  return value;
+  Serial.print("Board ID       : 0x");
+  Serial.print(NRF_FICR->DEVICEADDR[1], HEX);
+  Serial.print(NRF_FICR->DEVICEADDR[0], HEX);
+  Serial.print(NRF_FICR->DEVICEID[1], HEX);
+  Serial.print(NRF_FICR->DEVICEID[0], HEX);
+  Serial.println();
 }
 
 void setup() {
-  Bluefruit.begin();          // Sleep functions need the softdevice to be active.
+  Bluefruit.begin();
 
-  // initialize digital pin LED_BUILTIN as an output.
+  // Setup LEDs
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, !LED_STATE_ON);    
+  digitalWrite(LED_BUILTIN, !LED_STATE_ON);
 
+  // Setup serial and delay for 10 secs
   Serial.begin(115200);
-  delay(10);
+  delay(10000);
+
+  // Display Board ID:
+  display_info();
+  delay(10000);
+
+  // Initialize loop iteration count
+  iteration_count = 0;
 }
 
 void loop() {
-  //digitalToggle(LED_BUILTIN); // turn the LED on (HIGH is the voltage level)
-  ledOn(LED_BUILTIN);
-  dbgPrintVersion();
+  Serial.println(F("T - Loop"));
+  iteration_count++;
+  digitalWrite(LED_BUILTIN, LED_STATE_ON);
+  delay(25);
+  digitalWrite(LED_BUILTIN, !LED_STATE_ON);
   dbgMemInfo();
-  Serial.printf("NRF_FICR->INFO.PART      : 0x%08X\n", NRF_FICR->INFO.PART);
-  Serial.printf("NRF_FICR->INFO.VARIANT   : 0x%08X\n", NRF_FICR->INFO.VARIANT);
-  Serial.printf("NRF_FICR->INFO.PACKAGE   : 0x%08X\n", NRF_FICR->INFO.PACKAGE);
-  Serial.printf("NRF_FICR->INFO.RAM       : 0x%08X\n", NRF_FICR->INFO.RAM);
-  Serial.printf("NRF_FICR->INFO.FLASH     : 0x%08X\n", NRF_FICR->INFO.FLASH);
-  Serial.printf("NRF_POWER->RESETREAS     : 0x%08X\n", NRF_POWER->RESETREAS);
-  Serial.printf("NRF_POWER->MAINREGSTATUS : 0x%08X\n", NRF_POWER->MAINREGSTATUS);
-  Serial.printf("NRF_POWER->USBREGSTATUS  : 0x%08X\n", NRF_POWER->USBREGSTATUS);
-  Serial.printf("NRF_UICR->REGOUT0        : 0x%08X\n", NRF_UICR->REGOUT0);
-  Serial.printf("NRF_USBD->ENABLE         : 0x%08X\n", NRF_USBD->ENABLE);
-  Serial.printf("NRF_USBD->USBPULLUP      : 0x%08X\n", NRF_USBD->USBPULLUP);
-  Serial.printf("NRF_USBD->DPDMVALUE      : 0x%08X\n", NRF_USBD->DPDMVALUE);
-  Serial.printf("VDD  : %d\n", analogRead_internal2(SAADC_CH_PSELP_PSELP_VDD));
-  Serial.printf("VDD  : %0.2fV\n", voltageLevel(analogRead_internal2(SAADC_CH_PSELP_PSELP_VDD)));
-  Serial.printf("VDDH : %d\n", analogRead_internal2(SAADC_CH_PSELP_PSELP_VDDHDIV5));
-  Serial.printf("VDDH : %0.2fV\n", 5 * voltageLevel(analogRead_internal2(SAADC_CH_PSELP_PSELP_VDDHDIV5)));
+  Serial.print("Iteration count : "); Serial.println(iteration_count);
   delay(1000);
-  ledOff(LED_BUILTIN);
-  delay(10000);                // wait for a second
+
+  // Reset state
+  render_buf0 = false;
+  render_buf1 = false;
+  buf0_ready = false;
+  buf1_ready = false;
+  buffer_0_active = true;
+  underrun_count = 0;
+  i2s_write_count = 0;
+  i2s_write_bytes = 0;
+  amy_task_count = 0;
+  zero_buffer_count = 0;
+  update_duration_ema = 500;
+  update_duration_max = 0;
+  playback_active = false;
+
+  // Checkpoint heap free
+  uint32_t heap_used_before = dbgHeapUsed();
+
+  // Init AMY
+  amy_config_t amy_config = amy_default_config();
+  amy_config.audio = AMY_AUDIO_IS_I2S;
+  amy_start(amy_config);
+
+  uint32_t event_setup_start = micros();
+
+  // Will play MIDI note 50 on patch 130
+  amy_event e = amy_default_event();
+  e.osc = 0;
+  e.patch_number = 130;
+  e.velocity = 0.125;
+  e.midi_note = 50;
+  e.voices[0] = 0;
+  amy_add_event(&e);
+
+  uint32_t event_setup_duration = micros() - event_setup_start;
+
+  // Render for 4 seconds
+  playback_start_ms = millis();
+  playback_active = true;
+  while (playback_active) {
+    // Only run amy_update, if we need to fill a buffer
+    if ( render_buf0 || render_buf1 ) {
+      amy_task_count++;
+      uint32_t update_start_us = micros();
+      //show_debug(99);
+      amy_update();
+      uint32_t update_duration_us = micros() - update_start_us;
+      // Calculate the exponential moving average
+      update_duration_ema = (update_duration_us >> 3) + (update_duration_ema-(update_duration_ema >> 3));
+      if ( update_duration_us > update_duration_max ) {
+        update_duration_max = update_duration_us;
+      }
+    }
+    if (millis() - playback_start_ms >= 4000) {
+      playback_active = false;
+      uint32_t heap_used = dbgHeapUsed();
+      Serial.print("Iteration count : "); Serial.println(iteration_count);
+      Serial.print("Underrun count  : "); Serial.println(underrun_count);
+      Serial.print("I2S write count : "); Serial.println(i2s_write_count);
+      Serial.print("I2S write bytes : "); Serial.println(i2s_write_bytes);
+      Serial.print("I2S write zeros : "); Serial.println(zero_buffer_count);
+      Serial.print("Amy task count  : "); Serial.println(amy_task_count);
+      Serial.print("Amy update ema  : "); Serial.println(update_duration_ema);
+      Serial.print("Amy update max  : "); Serial.println(update_duration_max);
+      Serial.print("Event setup     : "); Serial.println(event_setup_duration);
+      Serial.print("Amy sysclock    : "); Serial.println(amy_sysclock());
+      Serial.print("Amy sample rate : "); Serial.println(AMY_SAMPLE_RATE);
+      Serial.print("Heap used       : "); Serial.println(dbgHeapUsed() - heap_used_before);
+    }
+    yield();
+  }
+
+  // Stop audio
+  amy_stop();
+
+  // Check heap
+  uint32_t heap_used_after = dbgHeapUsed();
+  uint32_t heap_free = ((uint32_t) __HeapLimit) - ((uint32_t) __HeapBase) - heap_used_after;
+  Serial.print("Heap leaked     : "); Serial.println((int32_t)heap_used_after - (int32_t)heap_used_before);
+  Serial.print("Heap free       : "); Serial.println(heap_free);
+
+  // Optional underrun inspection
+  if (underrun_count > 0) {
+    Serial.print("WARNING Underrun: "); Serial.println(underrun_count);
+  }
+
+  // Idle 20s
+  Serial.flush();
+  delay(20000);
 }

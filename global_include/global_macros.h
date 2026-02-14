@@ -2,5 +2,7 @@
 #define GLOBAL_MACROS_H__
 
 #define NRFX_I2S_ENABLED 1
+#define AMY_ISSUE_425
+#define AMY_SAMPLE_RATE 31250
 
 #endif //GLOBAL_MACROS_H__
