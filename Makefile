@@ -8,13 +8,13 @@ default: help
 # Global Variables
 #
 ROOT_DIR := $(patsubst %/,%,$(dir $(realpath $(lastword $(MAKEFILE_LIST)))))
-BOARD_MANAGER_URLS := https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
+BOARD_MANAGER_URLS := https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://raw.githubusercontent.com/pdcook/nRFMicro-Arduino-Core/main/package_nRFMicro_index.json
 ARDUINO_CLI ?= $(shell command -v arduino-cli || echo "/usr/local/bin/arduino-cli")
 ARDUINO_CLI_VERSION ?= 1.1.1
 ARDUINO_CONFIG_FILE ?= $(ROOT_DIR)/arduino-cli.yaml
 export ARDUINO_CONFIG_FILE
-CORES := Seeeduino:nrf52@1.1.10
-BOARD ?= shorepine:nrf52:xiaonRF52840Plus
+CORES := "nRFMicro-like Boards:nrf52@1.0.2"
+BOARD ?= shorepine:nrf52:supermini
 SKETCHES := $(wildcard *.ino)
 PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*) /dev/cu.usbmodemNotFound)
 

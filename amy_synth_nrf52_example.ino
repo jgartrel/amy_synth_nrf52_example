@@ -5,10 +5,10 @@
 #include <nrfx_i2s.h>
 #include <AMY-Arduino.h>
 
-#define PIN_I2S_BCLK PIN_I2S_SCK
-#define PIN_I2S_LRCLK PIN_I2S_WS
-#define PIN_I2S_SDOUT PIN_I2S_SD
-#define PIN_PWR_SPK D0
+#define PIN_I2S_BCLK D2   // 017 on the supermini
+#define PIN_I2S_LRCLK D3  // 020 on the supermini
+#define PIN_I2S_SDOUT D4  // 022 on the supermini
+#define PIN_PWR_SPK D5    // 024 on the supermini
 
 #define NRF_I2S_AUDIO_PRIORITY      6         ///< requested priority of the I2S peripheral
 

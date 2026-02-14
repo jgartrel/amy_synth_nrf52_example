@@ -1,5 +1,6 @@
 menu.softdevice=SoftDevice
 menu.debug=Debug
+#menu.debug_output=Debug Output
 
 # ----------------------------------
 # Seeed XIAO nRF52840 Plus
@@ -37,6 +38,8 @@ xiaonRF52840Plus.build.extra_flags=-DNRF52840_XXAA "-I{build.source.path}/global
 xiaonRF52840Plus.build.ldscript=nrf52840_s140_v7.ld
 xiaonRF52840Plus.build.vid=0x2886
 xiaonRF52840Plus.build.pid=0x8044
+
+# Point runtime_platform_path back to the core
 xiaonRF52840Plus.runtime.use_core_platform_path_for_runtime_platform_path=true
 
 # SofDevice Menu
@@ -55,3 +58,62 @@ xiaonRF52840Plus.menu.debug.l2.build.debug_flags=-DCFG_DEBUG=2
 xiaonRF52840Plus.menu.debug.l3=Level 3 (Segger SystemView)
 xiaonRF52840Plus.menu.debug.l3.build.debug_flags=-DCFG_DEBUG=3
 xiaonRF52840Plus.menu.debug.l3.build.sysview_flags=-DCFG_SYSVIEW=1
+
+
+# ----------------------------------
+# SuperMini nRF52840
+# ----------------------------------
+supermini.name=SuperMini nRF52840
+
+# VID/PID for bootloader
+supermini.vid.0=0x1209
+supermini.pid.0=0x5284
+supermini.vid.1=0x1209
+supermini.pid.1=0x5284
+supermini.vid.2=0x1209
+supermini.pid.2=0x5284
+supermini.vid.3=0x1209
+supermini.pid.3=0x5284
+
+# Upload
+supermini.bootloader.tool=bootburn
+supermini.upload.tool=nRFMicro-like Boards:nrfutil
+supermini.upload.protocol=nrfutil
+supermini.upload.use_1200bps_touch=true
+supermini.upload.wait_for_upload_port=true
+supermini.upload.maximum_size=811008
+supermini.upload.maximum_data_size=237568
+
+# Build
+supermini.build.mcu=cortex-m4
+supermini.build.f_cpu=64000000
+supermini.build.board=SuperMini_nRF52840
+supermini.build.core=nRFMicro-like Boards:nRF5
+supermini.build.variant=nRFMicro-like Boards:SuperMini_nRF52840
+supermini.build.usb_manufacturer="Generic"
+supermini.build.usb_product="SuperMini nRF52840"
+supermini.build.extra_flags=-DNRF52840_XXAA "-I{build.source.path}/global_include" "-include{build.source.path}/global_include/global_macros.h" {build.flags.usb}
+supermini.build.ldscript=nrf52840_s140_v7.ld
+supermini.build.vid=0x1209
+supermini.build.pid=0x5285
+supermini.build.bootloader_version=1.0.0
+
+# Point runtime_platform_path back to the core
+supermini.runtime.use_core_platform_path_for_runtime_platform_path=true
+
+# SoftDevice Menu
+supermini.menu.softdevice.s140v6=S140 7.3.0
+supermini.menu.softdevice.s140v6.build.sd_name=s140
+supermini.menu.softdevice.s140v6.build.sd_version=7.3.0
+supermini.menu.softdevice.s140v6.build.sd_fwid=0x0123
+
+# Debug Menu
+supermini.menu.debug.l0=Level 0 (Release)
+supermini.menu.debug.l0.build.debug_flags=-DCFG_DEBUG=0
+supermini.menu.debug.l1=Level 1 (Error Message)
+supermini.menu.debug.l1.build.debug_flags=-DCFG_DEBUG=1
+supermini.menu.debug.l2=Level 2 (Full Debug)
+supermini.menu.debug.l2.build.debug_flags=-DCFG_DEBUG=2
+supermini.menu.debug.l3=Level 3 (Segger SystemView)
+supermini.menu.debug.l3.build.debug_flags=-DCFG_DEBUG=3
+supermini.menu.debug.l3.build.sysview_flags=-DCFG_SYSVIEW=1
