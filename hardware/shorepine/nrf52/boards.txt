@@ -1,0 +1,57 @@
+menu.softdevice=SoftDevice
+menu.debug=Debug
+
+# ----------------------------------
+# Seeed XIAO nRF52840 Plus
+# ----------------------------------
+xiaonRF52840Plus.name=Seeed XIAO nRF52840 Plus (using global_include)
+
+# VID/PID for bootloader
+xiaonRF52840Plus.vid.0=0x2886
+xiaonRF52840Plus.pid.0=0x8064
+xiaonRF52840Plus.vid.1=0x2886
+xiaonRF52840Plus.pid.1=0x0064
+xiaonRF52840Plus.vid.2=0x2886
+xiaonRF52840Plus.pid.2=0x0064
+xiaonRF52840Plus.vid.3=0x2886
+xiaonRF52840Plus.pid.3=0x8064
+
+# Upload
+xiaonRF52840Plus.bootloader.tool=bootburn
+xiaonRF52840Plus.upload.tool=Seeeduino:nrfutil
+xiaonRF52840Plus.upload.protocol=nrfutil
+xiaonRF52840Plus.upload.use_1200bps_touch=true
+xiaonRF52840Plus.upload.wait_for_upload_port=true
+xiaonRF52840Plus.upload.maximum_size=811008
+xiaonRF52840Plus.upload.maximum_data_size=237568
+
+# Build
+xiaonRF52840Plus.build.mcu=cortex-m4
+xiaonRF52840Plus.build.f_cpu=64000000
+xiaonRF52840Plus.build.board=Seeed_XIAO_nRF52840_Plus
+xiaonRF52840Plus.build.core=Seeeduino:nRF5
+xiaonRF52840Plus.build.variant=Seeeduino:Seeed_XIAO_nRF52840_Plus
+xiaonRF52840Plus.build.usb_manufacturer="Seeed"
+xiaonRF52840Plus.build.usb_product="XIAO nRF52840 Plus"
+xiaonRF52840Plus.build.extra_flags=-DNRF52840_XXAA "-I{build.source.path}/global_include" "-include{build.source.path}/global_include/global_macros.h" {build.flags.usb}
+xiaonRF52840Plus.build.ldscript=nrf52840_s140_v7.ld
+xiaonRF52840Plus.build.vid=0x2886
+xiaonRF52840Plus.build.pid=0x8044
+xiaonRF52840Plus.runtime.use_core_platform_path_for_runtime_platform_path=true
+
+# SofDevice Menu
+xiaonRF52840Plus.menu.softdevice.s140v6=S140 7.3.0
+xiaonRF52840Plus.menu.softdevice.s140v6.build.sd_name=s140
+xiaonRF52840Plus.menu.softdevice.s140v6.build.sd_version=7.3.0
+xiaonRF52840Plus.menu.softdevice.s140v6.build.sd_fwid=0x0123
+
+# Debug Menu
+xiaonRF52840Plus.menu.debug.l0=Level 0 (Release)
+xiaonRF52840Plus.menu.debug.l0.build.debug_flags=-DCFG_DEBUG=0
+xiaonRF52840Plus.menu.debug.l1=Level 1 (Error Message)
+xiaonRF52840Plus.menu.debug.l1.build.debug_flags=-DCFG_DEBUG=1
+xiaonRF52840Plus.menu.debug.l2=Level 2 (Full Debug)
+xiaonRF52840Plus.menu.debug.l2.build.debug_flags=-DCFG_DEBUG=2
+xiaonRF52840Plus.menu.debug.l3=Level 3 (Segger SystemView)
+xiaonRF52840Plus.menu.debug.l3.build.debug_flags=-DCFG_DEBUG=3
+xiaonRF52840Plus.menu.debug.l3.build.sysview_flags=-DCFG_SYSVIEW=1
