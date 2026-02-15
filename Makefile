@@ -14,7 +14,7 @@ ARDUINO_CLI_VERSION ?= 1.1.1
 ARDUINO_CONFIG_FILE ?= $(ROOT_DIR)/arduino-cli.yaml
 export ARDUINO_CONFIG_FILE
 CORES := Seeeduino:nrf52@1.1.4
-BOARD ?= shorepine:nrf52:supermini
+BOARD ?= shorepine:nrf52:nicenanov2
 SKETCHES := $(wildcard *.ino)
 PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*) /dev/cu.usbmodemNotFound)
 
