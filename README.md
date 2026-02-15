@@ -55,3 +55,8 @@ You will need to execute the following commands to get a clean install of MaxOSX
     or
     $ PORT=/dev/cu.usbmodem101 make flash
     ```
+2.  Optionally, you can copy the uf2 file directly to the device. While the device is in DFU mode, run the following commands to first build the firmware, then copy it to the device (example is for the Nice Nano v2):
+    ```
+    $ BOARD=shorepine:nrf52:nicenanov2 make all
+    $ cp build/shorepine.nrf52.nicenanov2/amy_synth_nrf52_example.ino.uf2 /Volumes/NICENANO
+    ```
