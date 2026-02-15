@@ -12,7 +12,7 @@ You will need to execute the following commands to get a clean install of MaxOSX
     xcode-select --install
     ```  
 
-2. Install Rosetta (Only if you are on an M1 Mac):
+2. Install Rosetta (Only if you are on an M1 Mac or newer):
 
     ```
     /usr/sbin/softwareupdate --install-rosetta --agree-to-license
