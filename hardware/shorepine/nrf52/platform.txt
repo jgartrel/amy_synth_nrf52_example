@@ -1,5 +1,5 @@
 ## Override broken recipe
-recipe.objcopy.uf2.pattern=
+recipe.objcopy.uf2.pattern=python3 "{runtime.platform.path}/tools/uf2conv/uf2conv.py" -f 0xADA52840 -c -o "{build.path}/{build.project_name}.uf2" "{build.path}/{build.project_name}.hex"
 
 ## Override complier optimization
 #compiler.optimization_flag=-Ofast
