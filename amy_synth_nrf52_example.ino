@@ -34,6 +34,7 @@ static volatile uint32_t underrun_count;
 static volatile uint32_t i2s_write_count;
 static volatile uint32_t i2s_write_bytes;
 static volatile uint32_t amy_task_count;
+static volatile uint32_t amy_update_count;
 static volatile uint32_t zero_buffer_count;
 
 extern unsigned char __HeapBase[];
@@ -43,6 +44,15 @@ extern unsigned char __HeapLimit[];
 static bool playback_active;
 static uint32_t playback_start_ms;
 
+// Allocation of handles and memory for tasks, queues, and semaphores
+#define TASK_STACK_SIZE_DFLT 1024
+xTaskHandle g_pAmyTaskHandle = NULL;
+
+// Allocation static memory for tasks
+StackType_t g_amyTaskStackMem[TASK_STACK_SIZE_DFLT];
+StaticTask_t g_amyTaskTCB;
+
+bool g_debug_task = false;
 bool g_force_wdfail = false;
 uint32_t update_duration_ema = 0;
 uint32_t update_duration_max = 0;
@@ -53,6 +63,7 @@ static void i2s_event_handler(nrfx_i2s_buffers_t const *p_released, uint32_t sta
   if (!(status & NRFX_I2S_STATUS_NEXT_BUFFERS_NEEDED))
     return;
 
+  BaseType_t xHigherPriorityTaskWoken;
   nrfx_i2s_buffers_t next;
 
   if (buffer_0_active) {
@@ -70,6 +81,12 @@ static void i2s_event_handler(nrfx_i2s_buffers_t const *p_released, uint32_t sta
   next.p_rx_buffer = nullptr;
   buffer_0_active = !buffer_0_active;
   nrfx_i2s_next_buffers_set(&next);
+  // Notify Amy task to render next sample block
+  if ( g_pAmyTaskHandle != NULL ) {
+    xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(g_pAmyTaskHandle, 1, eIncrement, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
 }
 
 /* ---------------- I2S helpers ---------------- */
@@ -193,6 +210,49 @@ size_t amy_i2s_write(const uint8_t *buffer, size_t nbytes) {
   return 0;
 }
 
+void loopAmy(uint16_t iteration = 0)
+{
+  // Wait indefinitely for a poke to render AMY audio
+  uint32_t val = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  if (val > 1 || g_debug_task) {
+    Serial.print(F("T - Amy Render: "));
+    Serial.println(iteration);
+    Serial.print("Render Notifications: ");
+    Serial.println(val);
+    Serial.flush();
+  }
+  amy_task_count++;
+  // Only run amy_update, if we need to fill a buffer
+  if ( render_buf0 || render_buf1 ) {
+    amy_update_count++;
+    uint32_t update_start_us = micros();
+    //show_debug(99);
+    amy_update();
+    uint32_t update_duration_us = micros() - update_start_us;
+    // Calculate the exponential moving average
+    update_duration_ema = (update_duration_us >> 3) + (update_duration_ema-(update_duration_ema >> 3));
+    if ( update_duration_us > update_duration_max ) {
+      update_duration_max = update_duration_us;
+    }
+  }
+}
+
+void taskAmy(void *NotUsed)
+{
+  uint16_t loop_count = 0;
+  while (1) {
+    loopAmy(loop_count);
+    loop_count++;
+    yield();
+  }
+  // End ourselves
+  if (g_debug_task) {
+    Serial.println(F("T - Amy Render - Exiting"));
+  }
+  g_pAmyTaskHandle = NULL;
+  vTaskDelete(NULL);
+}
+
 void display_info()
 {
   Serial.print("Board ID       : 0x");
@@ -218,6 +278,17 @@ void setup() {
   display_info();
   delay(10000);
 
+  // Crate AMY Render Task
+  if ( g_pAmyTaskHandle == NULL) {
+    g_pAmyTaskHandle = xTaskCreateStatic(taskAmy,
+                                         "Amy Render",
+                                         TASK_STACK_SIZE_DFLT,
+                                         NULL,
+                                         TASK_PRIO_LOW,
+                                         g_amyTaskStackMem,
+                                         &g_amyTaskTCB);
+  }
+
   // Initialize loop iteration count
   iteration_count = 0;
 }
@@ -242,6 +313,7 @@ void loop() {
   i2s_write_count = 0;
   i2s_write_bytes = 0;
   amy_task_count = 0;
+  amy_update_count = 0;
   zero_buffer_count = 0;
   update_duration_ema = 500;
   update_duration_max = 0;
@@ -272,19 +344,6 @@ void loop() {
   playback_start_ms = millis();
   playback_active = true;
   while (playback_active) {
-    // Only run amy_update, if we need to fill a buffer
-    if ( render_buf0 || render_buf1 ) {
-      amy_task_count++;
-      uint32_t update_start_us = micros();
-      //show_debug(99);
-      amy_update();
-      uint32_t update_duration_us = micros() - update_start_us;
-      // Calculate the exponential moving average
-      update_duration_ema = (update_duration_us >> 3) + (update_duration_ema-(update_duration_ema >> 3));
-      if ( update_duration_us > update_duration_max ) {
-        update_duration_max = update_duration_us;
-      }
-    }
     if (millis() - playback_start_ms >= 4000) {
       playback_active = false;
       uint32_t heap_used = dbgHeapUsed();
@@ -294,6 +353,7 @@ void loop() {
       Serial.print("I2S write bytes : "); Serial.println(i2s_write_bytes);
       Serial.print("I2S write zeros : "); Serial.println(zero_buffer_count);
       Serial.print("Amy task count  : "); Serial.println(amy_task_count);
+      Serial.print("Amy update cnt  : "); Serial.println(amy_update_count);
       Serial.print("Amy update ema  : "); Serial.println(update_duration_ema);
       Serial.print("Amy update max  : "); Serial.println(update_duration_max);
       Serial.print("Event setup     : "); Serial.println(event_setup_duration);
