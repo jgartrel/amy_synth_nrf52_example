@@ -3,4 +3,4 @@ recipe.objcopy.uf2.pattern=python3 "{runtime.platform.path}/tools/uf2conv/uf2con
 
 ## Override complier optimization
 #compiler.optimization_flag=-Ofast
-#compiler.optimization_flag=-O3
+compiler.optimization_flag=-O3
