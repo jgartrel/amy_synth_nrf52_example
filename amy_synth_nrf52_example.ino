@@ -10,6 +10,9 @@
 #define PIN_I2S_SDOUT D4  // 022 on the supermini
 #define PIN_PWR_SPK D5    // 024 on the supermini
 
+BLEDfu  g_BLEDfu;
+BLEUart g_BLEUart;
+
 #define NRF_I2S_AUDIO_PRIORITY      6         ///< requested priority of the I2S peripheral
 
 /* ---------------- Audio config ---------------- */
@@ -300,8 +303,48 @@ void example_synth_chord(uint32_t start, uint16_t patch_number, uint8_t polyphon
   }
 }
 
+void startAdv(uint16_t timeout = 0)
+{
+  // Advertising packet
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+  Bluefruit.Advertising.addTxPower();
+  Bluefruit.Advertising.addName();
+
+  /* Start Advertising
+   * - Enable auto advertising if disconnected
+   * - Interval:  fast mode = 20 ms, slow mode = 152.5 ms
+   * - Timeout for fast mode is 30 seconds
+   * - Start(timeout) with timeout = 0 will advertise forever (until connected)
+   *
+   * For recommended advertising interval
+   * https://developer.apple.com/library/content/qa/qa1931/_index.html
+   */
+  Bluefruit.Advertising.restartOnDisconnect(true);
+  Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
+  Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
+  if ( Bluefruit.Advertising.isRunning() || Bluefruit.Periph.connected() )
+  {
+    // Do nothing
+    return;
+  }
+  else
+  {
+    Bluefruit.Advertising.start(timeout);                // 0 = Don't stop advertising after n seconds
+  }
+}
+
 void setup() {
+  Bluefruit.autoConnLed(false);
+  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
+
+   // Setup OTA DFU
+  g_BLEDfu.begin();
+
+  // Configure and Start the BLE Uart Service
+  g_BLEUart.begin();
+  //g_BLEUart.bufferTXD(true);
+  startAdv();
 
   // Setup LEDs
   pinMode(LED_BUILTIN, OUTPUT);
