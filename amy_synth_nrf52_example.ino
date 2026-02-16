@@ -263,6 +263,43 @@ void display_info()
   Serial.println();
 }
 
+void example_synth_chord(uint32_t start, uint16_t patch_number, uint8_t polyphony) {
+  // Like example_voice_chord, but use 'synth' to avoid having to keep track of voices.
+  amy_event e = amy_default_event();
+  e.time = start;
+  e.patch_number = patch_number;
+  e.num_voices = polyphony;
+  e.synth = 0;
+  amy_add_event(&e);
+  start += 250;
+
+  e = amy_default_event();
+  e.velocity = 0.125;
+  e.synth = 0;
+  e.time = start;
+
+  uint8_t chord_notes[] = { 50, 54, 57 }; // Dmaj
+  for (int i = 0; i < polyphony; i++) {
+    uint8_t octive = i/sizeof(chord_notes);
+    uint8_t position = i%sizeof(chord_notes);
+
+    e.time += (i == 0) ? 0 : 500;
+    e.midi_note = chord_notes[position] + 12 * octive;
+    amy_add_event(&e);
+  }
+
+  e.time += 2000;
+  e.velocity = 0;
+
+  // Voices are referenced only by their note, so have to turn them off individually.
+  for (int i = 0; i < polyphony; i++) {
+    uint8_t octive = i/sizeof(chord_notes);
+    uint8_t position = i%sizeof(chord_notes);
+    e.midi_note = chord_notes[position] + 12 * octive;
+    amy_add_event(&e);
+  }
+}
+
 void setup() {
   Bluefruit.begin();
 
@@ -329,14 +366,7 @@ void loop() {
 
   uint32_t event_setup_start = micros();
 
-  // Will play MIDI note 50 on patch 130
-  amy_event e = amy_default_event();
-  e.osc = 0;
-  e.patch_number = 130;
-  e.velocity = 0.125;
-  e.midi_note = 50;
-  e.voices[0] = 0;
-  amy_add_event(&e);
+  example_synth_chord(amy_sysclock(),0,4);
 
   uint32_t event_setup_duration = micros() - event_setup_start;
 
@@ -380,5 +410,5 @@ void loop() {
 
   // Idle 20s
   Serial.flush();
-  delay(20000);
+  delay(5000);
 }
